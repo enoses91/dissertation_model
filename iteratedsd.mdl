@@ -1,0 +1,659 @@
+{UTF-8}
+Active Tickets= INTEG (
+	Ticket Pickup Rate-Ticket Completion Rate-Ticket Stop Rate,
+		1)
+	~	Tickets [0,4]
+	~		|
+
+Actual Productivity=
+	Task Completion Rate + Ticket Completion Rate
+	~	Work Items / Day
+	~		|
+
+"<Target Active Tasks>"=
+	"<Task Coverage>"*(Task Completion Rate)
+	~	Tasks
+	~		|
+
+Completed Tasks= INTEG (
+	Task Completion Rate - Rework Rate,
+		"<Complete Tasks from Previous Run>")
+	~	Tasks
+	~		~	:SUPPLEMENTARY 
+	|
+
+Completed Tickets= INTEG (
+	Ticket Completion Rate,
+		"<Complete Tickets from Previous Run>")
+	~	Tickets
+	~		|
+
+Task Completion Rate= DELAY FIXED (
+	 IF THEN ELSE (
+	   "<Base Task Completion Rate>"*Change Productivity < "<Max Task Completion Rate>",
+	   "<Base Task Completion Rate>"*Change Productivity,
+	   "<Max Task Completion Rate>"
+	),
+	2,
+	"<Base Task Completion Rate>")
+	~	
+	~		|
+
+Active Tasks= INTEG (
+	Task Pickup Rate-Task Completion Rate-Task Stop Rate,
+		1)
+	~	Tasks [0,4]
+	~		|
+
+"<Target Active Tickets>"=
+	"<Ticket Coverage>"*Ticket Completion Rate
+	~	Tickets
+	~		|
+
+Ticket Completion Rate=
+	DELAY FIXED ( IF THEN ELSE (
+	   "<Base Ticket Completion Rate>"*Change Productivity < "<Max Ticket Completion Rate>"\
+		,
+	   "<Base Ticket Completion Rate>"*Change Productivity,
+	   "<Max Ticket Completion Rate>"
+	),
+	2,
+	"<Base Ticket Completion Rate>"
+	)
+	~	
+	~		|
+
+Time Required to Complete= ACTIVE INITIAL (
+	Known Remaining Task Work/Task Completion Rate+Known Remaining Ticket Work/Ticket Completion Rate\
+		,
+		 1)
+	~	Days
+	~	Days to complete all queued work
+	|
+
+"<Max Remaining Task Work>"=
+	100
+	~	
+	~		|
+
+Known Remaining Task Work=
+	IF THEN ELSE( Total Queued Tasks <"<Max Remaining Task Work>", Total Queued Tasks, "<Max Remaining Task Work>"\
+		)
+	~	Tasks
+	~		|
+
+Known Remaining Ticket Work=
+	IF THEN ELSE ( Total Queued Tickets <"<Max Remaining Ticket Work>", Total Queued Tickets\
+		, "<Max Remaining Ticket Work>")
+	~	
+	~		|
+
+"<Max Remaining Ticket Work>"=
+	900
+	~	
+	~		|
+
+"<Max Task Completion Rate>"=
+	"<Base Task Completion Rate>"*1.5
+	~	
+	~		|
+
+"<Max Ticket Completion Rate>"=
+	"<Base Ticket Completion Rate>"*1.5
+	~	
+	~		|
+
+Management Pressure=
+	1+( "<Base Mgmt Press>" + "<Base Mgmt Press>"*(Productivity Gap*Quality Gap*Timeliness Gap\
+		) ) / 17.3
+	~	
+	~		|
+
+"<Complete Tasks from Previous Run>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx', 'Sheet1' , 'A14' )
+	~	
+	~		|
+
+"<Complete Tickets from Previous Run>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx', 'Sheet1' , 'A15' )
+	~	
+	~		|
+
+Management Preemption=
+	IF THEN ELSE( Time=0, "<Base Mgmt Preempt>", "<Base Mgmt Preempt>"*Management Pressure\
+		)
+	~	
+	~		|
+
+"<Base Mgmt Preempt>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx', 'Sheet1' , 'A13' )
+	~	
+	~		|
+
+"<Queued Tasks from Previous Run>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx', 'Sheet1' , 'A11' )
+	~	
+	~		|
+
+"<Queued Tickets from Previous Run>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx', 'Sheet1' , 'A12' )
+	~	
+	~		|
+
+Total Queued Tasks= INTEG (
+	MAX(0,Mnt Gen Rate+Proj Gen Rate+Rework Rate+Task Stop Rate-Task Pickup Rate),
+		"<Queued Tasks from Previous Run>")
+	~	Tasks
+	~		|
+
+Total Queued Tickets= INTEG (
+	MAX(0,Inc Gen Rate+Rate Inc from Change+Req Gen Rate+Ticket Stop Rate-Ticket Pickup Rate\
+		),
+		"<Queued Tickets from Previous Run>")
+	~	Tickets
+	~		|
+
+Fatigue= DELAY FIXED (
+	(1+(("<Base Fatigue>" + ("<Base Fatigue>" * Management Pressure) * 0.3) / 3.2)) , 2 \
+		, "<Base Fatigue>")
+	~	
+	~		|
+
+"<Base Fatigue>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx', 'Sheet1' , 'A10' )
+	~	
+	~		|
+
+"<Base Mgmt Press>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx', 'Sheet1' , 'A9' )
+	~	
+	~		|
+
+Rework Rate=
+	IF THEN ELSE (
+	     "<Base Rework Rate>" < 0.3,
+	     "<Base Rework Rate>" + "<Base Rework Rate>"*(Fatigue - Management Quality Focus\
+		),
+	     0.3
+	)
+	~	Tasks / Day
+	~	0.3 is set as max rework rate -> 10% of 3 tasks (baseline task completion \
+		rate)
+	|
+
+Rate Inc from Change=
+	IF THEN ELSE (
+	     "<Base Inc from Change Rate>" < 1.56886,
+	     "<Base Inc from Change Rate>" + "<Base Inc from Change Rate>"*(Fatigue-Management Quality Focus\
+		),
+	     1.56886
+	)
+	~	Tickets/Day
+	~	1.56886 is set as max error rate -> 10% of 15.6886 (baseline ticket \
+		completion rate)
+	|
+
+Error Rate= DELAY FIXED (
+	Rate Inc from Change+Rework Rate,1,0.093)
+	~	Work Items / Day
+	~		|
+
+"<Desired Productivity>"=
+	28.6828
+	~	Work Items/Day
+	~	Baseline From ServiceNow data plus estimated task workload = 18.6886
+	|
+
+Unproductive Time=
+	Task Stop Rate+Ticket Stop Rate
+	~	Work Items/Day
+	~		|
+
+Change Productivity=
+	1+((Management Pressure-Fatigue)+0.9)/1.49
+	~	
+	~		|
+
+Productivity Gap=
+	1+(("<Desired Productivity>" / Actual Productivity)/100)
+	~	
+	~	Division by 100  and adding 1 normalizes range in constraint (1,2]
+	|
+
+"<Base Inc from Change Rate>"=
+	GET XLS CONSTANTS('sddatain.xlsx', 'Sheet1' , 'A8' )
+	~	Tickets/Day
+	~	baseline: .5% of 15.6886 tasks / day completed -> .078
+	|
+
+Ticket Stop Rate=
+	"<Base Ticket Stop Rate>"*Management Preemption
+	~	Tickets/Day
+	~		|
+
+Ticket Pickup Rate=
+	("<Base Ticket Pickup Rate>"+"<Active Ticket Correction>")
+	~	Tickets / Day
+	~		|
+
+Task Pickup Rate=
+	("<Base Task Pickup Rate>"+"<Active Task Correction>")
+	~	Tasks / Day [0,?]
+	~		|
+
+Quality Gap=
+	1+(Error Rate/"<Desired Quality>")/35
+	~	
+	~		|
+
+Management Quality Focus= DELAY FIXED (
+	 Quality Gap, 1 , 1)
+	~	
+	~		|
+
+Task Stop Rate=
+	"<Base Task Stop Rate>"*Management Preemption
+	~	Tasks / Day
+	~		|
+
+"<Desired Quality>"=
+	0.143414
+	~	Work Items / Day
+	~	baseline of 0.143414 errors / day out of 28.6828 work items / day \
+		completed -> 0.5%
+	|
+
+"<Active Ticket Correction>"=
+	("<Target Active Tickets>"-Active Tickets)/"<Time to Correct Active Tickets>"
+	~	Tickets/Day
+	~		|
+
+"<Base Task Stop Rate>"=
+	GET XLS CONSTANTS('sddatain.xlsx', 'Sheet1' , 'A4' )
+	~	Tasks / Day
+	~		|
+
+"<Base Ticket Completion Rate>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx' , 'Sheet1' , 'A5' )
+	~	Tickets / Day
+	~	Base 15.6886 from ServiceNow
+	|
+
+"<Base Ticket Pickup Rate>"=
+	GET XLS CONSTANTS('sddatain.xlsx', 'Sheet1' , 'A1' )
+	~	Tickets / Day
+	~		|
+
+"<Base Ticket Stop Rate>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx' , 'Sheet1' , 'A3' )
+	~	Tickets / Day
+	~		|
+
+"<Ticket Coverage>"=
+	15.6886
+	~	Days
+	~	From analysis of ServiceNow data
+	|
+
+"<Time to Correct Active Tickets>"=
+	5
+	~	Days
+	~		|
+
+"<Active Task Correction>"=
+	IF THEN ELSE( ("<Target Active Tasks>"-Active Tasks)/"<Time to Correct Active Tasks>"\
+		>0 , ("<Target Active Tasks>"-Active Tasks)/"<Time to Correct Active Tasks>" , 0 )
+	~	Tasks / Day
+	~		|
+
+"<Base Rework Rate>"=
+	GET XLS CONSTANTS( 'sddatain.xlsx', 'Sheet1' , 'A7' )
+	~	Tasks / Day
+	~		|
+
+Req Gen Rate=
+	10.7443
+	~	Tickets / Day
+	~	Base 10.7443 from ServiceNow data
+	|
+
+"<Desired Timeliness>"=
+	5
+	~	Days
+	~		|
+
+"<Task Coverage>"=
+	3
+	~	Days
+	~		|
+
+"<Time to Correct Active Tasks>"=
+	2
+	~	Days
+	~		|
+
+Inc Gen Rate=
+	4.9385
+	~	Tickets / Day
+	~	Base of 4.9385 from ServiceNow data
+	|
+
+Timeliness Gap=
+	1+(Time Required to Complete / "<Desired Timeliness>")/2001
+	~	
+	~	Division by 2001 and adding 1 normalizes range in constraint (1,2]
+	|
+
+"<Base Task Completion Rate>"=
+	GET XLS CONSTANTS('sddatain.xlsx', 'Sheet1' , 'A6' )
+	~	Tasks / Day
+	~	No baseline data, assume 3 as a starting point
+	|
+
+"<Base Task Pickup Rate>"=
+	GET XLS CONSTANTS('sddatain.xlsx', 'Sheet1', 'A2')
+	~	Tasks/Day
+	~		|
+
+Mnt Gen Rate=
+	5
+	~	Tasks / Day
+	~		|
+
+Proj Gen Rate=
+	8
+	~	Tasks / Day
+	~		|
+
+********************************************************
+	.Control
+********************************************************~
+		Simulation Control Parameters
+	|
+
+FINAL TIME  = 5
+	~	Day
+	~	The final time for the simulation.
+	|
+
+INITIAL TIME  = 0
+	~	Day
+	~	The initial time for the simulation.
+	|
+
+SAVEPER  = 
+        TIME STEP
+	~	Day [0,?]
+	~	The frequency with which output is stored.
+	|
+
+TIME STEP  = 1
+	~	Day [0,?]
+	~	The time step for the simulation.
+	|
+
+\\\---/// Sketch information - do not modify anything except names
+V300  Do not put anything below this section - it will be ignored
+*Main Model Elements
+$-1--1--1,0,|12||-1--1--1|-1--1--1|-1--1--1|-1--1--1|-1--1--1|96,96,72,0
+10,1,Active Tasks,1146,274,62,23,3,3,0,38,-1,1,0,0,0-0-0,0-128-0,Arial|||255-255-255,0,0,0,0,0,0
+10,2,Total Queued Tasks,753,272,62,23,3,3,0,38,-1,0,0,0,0-0-0,0-128-0,Arial|||255-255-255,0,0,0,0,0,0
+1,3,5,2,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(881,270)|
+1,4,5,1,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1022,270)|
+11,5,0,954,270,6,8,34,3,0,4,3,0,0,0,0-0-0,128-255-128,|||0-0-0,0,0,0,0,0,0
+10,6,Task Pickup Rate,954,240,57,22,35,3,0,39,-1,0,0,0,128-255-128,128-255-128,Arial|||0-0-0,0,0,0,0,0,0
+10,7,Completed Tasks,1563,271,54,25,3,3,0,58,-1,0,0,0,0-0-0,0-0-0,Arial|11|B|0-0-0,0,0,0,0,0,0
+12,8,48,551,251,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,9,14,8,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(587,251)|
+12,10,48,549,293,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,11,12,10,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(586,293)|
+11,12,0,619,293,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,13,Mnt Gen Rate,619,317,60,16,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+11,14,0,620,251,6,8,34,3,0,0,3,0,0,0,0,0,0,0,0,0
+10,15,Proj Gen Rate,620,221,54,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+12,16,48,1708,275,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+11,17,0,1655,275,6,8,2,3,0,0,1,0,0,0,0,0,0,0,0,0
+1,18,17,7,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1633,275)|
+1,19,17,16,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1679,275)|
+10,20,"<Base Task Pickup Rate>",876,309,54,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,21,20,5,1,1,0,0,0,192,0,-1--1--1,,1|(917,293)|
+10,22,"<Base Task Completion Rate>",1425,387,42,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,23,12,2,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(658,293)|
+1,24,14,2,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(658,251)|
+10,25,"<Target Active Tasks>",1386,187,54,18,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,26,"<Active Task Correction>",1235,214,48,18,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,27,25,26,1,1,43,0,0,192,0,-1--1--1,,1|(1318,180)|
+10,28,"<Task Coverage>",1489,138,42,18,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,29,28,25,1,1,0,0,0,192,0,-1--1--1,,1|(1426,155)|
+10,30,"<Time to Correct Active Tasks>",1310,133,62,18,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,31,30,26,1,1,0,0,0,192,0,-1--1--1,,1|(1249,180)|
+10,32,"<Base Rework Rate>",1046,383,45,18,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,33,26,5,1,1,43,0,0,192,0,-1--1--1,,1|(1044,233)|
+1,34,1,26,1,1,0,0,0,192,0,-1--1--1,,1|(1186,240)|
+10,35,Change Productivity,1315,654,50,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,36,Management Pressure,1468,628,58,22,3,3,0,4,-1,1,0,0,0-0-0,255-128-128,|||0-0-0,0,0,0,0,0,0
+1,37,36,35,0,0,43,0,0,192,0,-1--1--1,,1|(0,0)|
+10,38,Known Remaining Task Work,1429,98,71,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,39,2,38,1,0,43,0,0,192,0,-1--1--1,,1|(972,161)|
+10,40,Time Required to Complete,1874,644,54,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,41,38,40,1,0,43,0,0,192,0,-1--1--1,,1|(1842,302)|
+10,42,"<Desired Timeliness>",1737,765,46,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,43,Timeliness Gap,1683,678,54,22,8,3,0,4,-1,0,0,0,0-0-0,255-255-128,|||0-0-0,0,0,0,0,0,0
+1,44,42,43,1,1,0,0,0,192,0,-1--1--1,,1|(1728,729)|
+1,45,40,43,0,0,43,0,0,192,0,-1--1--1,,1|(0,0)|
+12,46,0,1366,526,38,38,4,7,0,0,-1,0,0,0,0,0,0,0,0,0
+Work Harder
+10,47,Fatigue,1066,609,42,22,3,3,0,4,-1,1,0,0,0-0-0,255-128-128,|||0-0-0,0,0,0,0,0,0
+1,48,36,47,1,0,43,0,1,193,0,255-0-0,|||0-0-0,1|(1266,571)|
+1,49,47,35,1,0,45,0,1,192,0,255-0-0,|||0-0-0,1|(1150,657)|
+12,50,0,1224,617,38,38,5,7,0,0,-1,0,0,0,0,0,0,0,0,0
+Burnout
+12,51,0,1076,449,38,38,5,7,0,0,-1,0,0,0,0,0,0,0,0,0
+Haste Makes Waste
+10,52,Active Tickets,1134,961,62,23,3,3,0,38,-1,0,0,0,0-0-0,64-128-128,Arial|||255-255-255,0,0,0,0,0,0
+10,53,Total Queued Tickets,741,959,62,23,3,3,0,38,-1,0,0,0,0-0-0,64-128-128,Arial|||255-255-255,0,0,0,0,0,0
+1,54,56,53,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(870,957)|
+1,55,56,52,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1010,957)|
+11,56,0,943,957,6,8,34,3,0,4,1,0,0,0,0-0-0,128-255-128,|||0-0-0,0,0,0,0,0,0
+10,57,Ticket Pickup Rate,943,987,57,22,35,3,0,39,-1,0,0,0,128-255-128,128-255-128,Arial|||0-0-0,0,0,0,0,0,0
+12,58,48,539,938,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,59,64,58,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(575,938)|
+12,60,48,537,980,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,61,62,60,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(575,980)|
+11,62,0,609,980,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,63,Req Gen Rate,609,998,56,10,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+11,64,0,608,938,6,8,34,3,0,0,3,0,0,0,0,0,0,0,0,0
+10,65,Inc Gen Rate,608,920,58,10,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,66,62,53,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(647,980)|
+1,67,64,53,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(646,938)|
+10,68,Completed Tickets,1568,966,42,22,3,3,0,58,-1,0,0,0,0-0-0,0-0-0,Arial|11|B|0-0-0,0,0,0,0,0,0
+12,69,48,1707,966,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+11,70,0,1642,966,6,8,2,3,0,0,1,0,0,0,0,0,0,0,0,0
+1,71,70,68,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1623,966)|
+1,72,70,69,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1672,966)|
+10,73,"<Base Ticket Pickup Rate>",989,898,57,18,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,74,"<Base Ticket Completion Rate>",1458,892,50,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,75,"<Active Ticket Correction>",1245,1041,58,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,76,"<Time to Correct Active Tickets>",1380,1109,58,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,77,"<Target Active Tickets>",1480,1080,58,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,78,"<Ticket Coverage>",1620,1097,42,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,79,73,56,1,1,0,0,0,192,0,-1--1--1,,1|(968,935)|
+1,80,52,75,1,1,0,0,0,192,0,-1--1--1,,1|(1213,1004)|
+1,81,75,56,1,1,0,0,0,192,0,-1--1--1,,1|(1054,1000)|
+1,82,77,75,1,1,43,0,0,192,0,-1--1--1,,1|(1362,1073)|
+1,83,76,75,1,1,0,0,0,192,0,-1--1--1,,1|(1305,1092)|
+1,84,78,77,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,85,Known Remaining Ticket Work,1365,1172,62,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,86,53,85,1,0,43,0,0,192,0,-1--1--1,,1|(1051,1124)|
+1,87,85,40,1,0,43,0,0,192,0,-1--1--1,,1|(1884,864)|
+12,88,48,740,831,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,89,91,88,100,0,0,22,1,192,0,255-0-0,|||0-0-0,1|(740,859)|
+1,90,91,53,4,0,0,22,1,192,0,255-0-0,|||0-0-0,1|(740,913)|
+11,91,0,740,885,8,6,33,3,0,0,4,0,0,0,0,0,0,0,0,0
+10,92,Rate Inc from Change,802,885,54,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,93,47,91,1,0,43,0,1,192,0,255-0-0,|||0-0-0,1|(945,753)|
+12,94,0,942,830,38,38,5,7,0,0,-1,0,0,0,0,0,0,0,0,0
+Haste Makes Waste
+12,95,0,1416,803,38,38,4,7,0,0,-1,0,0,0,0,0,0,0,0,0
+Work Harder
+1,96,98,1,100,0,0,22,1,192,0,255-0-0,|||0-0-0,1|(1146,157)|
+1,97,98,2,4,0,0,22,1,192,0,255-0-0,|||0-0-0,1|(753,157)|
+11,98,0,952,157,6,8,34,3,0,0,3,0,0,0,0,0,0,0,0,0
+10,99,Task Stop Rate,952,130,57,19,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,100,"<Base Task Stop Rate>",885,70,37,31,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,101,100,98,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,102,104,52,100,0,0,22,1,192,0,255-0-0,|||0-0-0,1|(1134,1099)|
+1,103,104,53,4,0,0,22,1,192,0,255-0-0,|||0-0-0,1|(741,1099)|
+11,104,0,944,1099,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,105,Ticket Stop Rate,944,1129,46,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,106,"<Base Ticket Stop Rate>",1000,1191,50,22,8,3,1,0,-1,1,0,0,0,0,0,0,0,0
+1,107,106,104,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,108,Error Rate,960,562,58,22,8,3,0,4,-1,0,0,0,0-0-0,128-255-128,|||0-0-0,0,0,0,0,0,0
+1,109,91,108,1,0,45,0,1,192,0,0-0-255,|||0-0-0,1|(902,725)|
+10,110,"<Desired Quality>",757,731,42,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,111,Quality Gap,831,641,46,22,8,3,0,4,-1,0,0,0,0-0-0,255-255-128,|||0-0-0,0,0,0,0,0,0
+1,112,110,111,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,113,108,111,0,0,43,0,0,192,0,-1--1--1,,1|(0,0)|
+10,114,Management Preemption,481,684,42,22,3,3,0,4,-1,1,0,0,0-0-0,255-128-128,|||0-0-0,0,0,0,0,0,0
+10,115,Management Quality Focus,635,528,42,22,3,3,0,4,-1,1,0,0,0-0-0,255-128-128,|||0-0-0,0,0,0,0,0,0
+1,116,111,115,1,0,43,0,1,193,0,0-128-0,|||0-0-0,1|(736,594)|
+1,117,115,91,1,0,45,0,1,192,0,0-128-0,|||0-0-0,1|(647,713)|
+1,118,114,98,1,0,43,0,1,192,0,255-0-0,|||0-0-0,1|(518,232)|
+1,119,114,104,1,0,43,0,1,192,0,255-0-0,|||0-0-0,1|(526,1048)|
+12,120,0,488,528,38,38,5,7,0,0,-1,0,0,0,0,0,0,0,0,0
+Not Helpful Boss
+12,121,0,508,828,38,38,5,7,0,0,-1,0,0,0,0,0,0,0,0,0
+Not Helpful Boss
+12,122,0,753,512,38,38,4,7,0,0,-1,0,0,0,0,0,0,0,0,0
+Helping Focus
+12,123,0,690,635,38,38,4,7,0,0,-1,0,0,0,0,0,0,0,0,0
+Helping Focus
+10,124,Unproductive Time,2076,558,50,22,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,125,98,124,1,0,43,0,1,192,0,255-0-0,|||0-0-0,1|(1865,204)|
+1,126,104,124,1,0,43,0,1,192,0,255-0-0,|||0-0-0,1|(1828,1088)|
+10,127,"<Desired Productivity>",1713,562,54,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,128,Actual Productivity,1864,487,50,22,8,3,0,4,-1,0,0,0,0-0-0,128-255-128,|||0-0-0,0,0,0,0,0,0
+10,129,Productivity Gap,1550,498,50,22,8,3,0,4,-1,0,0,0,0-0-0,255-255-128,|||0-0-0,0,0,0,0,0,0
+1,130,128,129,1,0,45,0,1,192,0,0-0-255,|||0-0-0,1|(1691,463)|
+1,131,127,129,0,1,43,0,0,192,0,-1--1--1,,1|(0,0)|
+10,132,"<Base Inc from Change Rate>",627,868,58,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,133,132,91,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,134,111,36,1,0,43,0,1,193,0,255-0-0,|||0-0-0,1|(1192,722)|
+1,135,129,36,1,0,43,0,1,193,0,255-0-0,|||0-0-0,1|(1482,553)|
+1,136,138,7,100,0,0,22,1,192,0,255-0-0,|||0-0-0,1|(1563,352)|
+1,137,138,2,4,0,0,22,1,192,0,255-0-0,|||0-0-0,1|(753,352)|
+11,138,0,920,352,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,139,Rework Rate,920,382,46,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,140,115,138,1,0,45,0,1,192,0,0-128-0,|||0-0-0,1|(773,413)|
+1,141,47,138,1,0,43,0,1,192,0,255-0-0,|||0-0-0,1|(1019,463)|
+1,142,138,108,1,0,45,0,0,192,0,-1--1--1,,1|(950,441)|
+1,143,32,138,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,144,36,114,1,0,43,0,1,192,0,255-0-0,|||0-0-0,1|(1025,780)|
+10,145,"<Base Fatigue>",1129,519,42,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,146,145,47,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,147,"<Base Mgmt Press>",1439,709,47,22,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,148,147,36,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,149,"<Queued Tickets from Previous Run>",629,1218,60,26,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,150,149,53,0,1,0,0,0,192,1,-1--1--1,,1|(0,0)|
+10,151,"<Queued Tasks from Previous Run>",567,63,60,26,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,152,151,2,0,1,0,0,0,192,1,-1--1--1,,1|(0,0)|
+10,153,"<Base Mgmt Preempt>",359,778,47,22,8,3,1,0,-1,1,0,0,0,0,0,0,0,0
+1,154,153,114,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,155,Time,481,724,29,10,8,2,1,3,-1,0,0,0,128-128-128,0-0-0,|||128-128-128,0,0,0,0,0,0
+1,156,155,114,0,1,0,0,0,64,0,-1--1--1,,1|(0,0)|
+10,157,"<Complete Tasks from Previous Run>",1685,348,65,26,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+10,158,"<Complete Tickets from Previous Run>",1652,865,65,26,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,159,157,7,0,1,0,0,0,192,1,-1--1--1,,1|(0,0)|
+1,160,158,68,0,1,0,0,0,192,1,-1--1--1,,1|(0,0)|
+1,161,43,36,1,0,0,0,0,192,0,-1--1--1,,1|(1570,675)|
+10,162,"<Max Task Completion Rate>",1261,325,47,26,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,163,22,162,0,1,0,0,0,64,0,-1--1--1,,1|(0,0)|
+10,164,"<Max Ticket Completion Rate>",1204,878,51,26,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,165,74,164,0,1,0,0,0,64,0,-1--1--1,,1|(0,0)|
+10,166,"<Max Remaining Task Work>",1374,23,47,26,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,167,166,38,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,168,"<Max Remaining Ticket Work>",1228,1225,56,26,8,3,1,0,-1,0,0,0,0,0,0,0,0,0
+1,169,168,85,0,1,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,170,Time,1066,649,29,10,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|||128-128-128,0,0,0,0,0,0
+1,171,173,52,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1282,968)|
+1,172,173,68,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1453,968)|
+11,173,0,1375,968,6,8,34,3,0,1,1,0,0,0,0-128-0,0-0-0,|||0-0-0,0,0,0,0,0,0
+10,174,Ticket Completion Rate,1375,1002,47,26,40,3,0,4,-1,1,0,0,0-0-0,255-255-255,|||0-0-0,0,0,0,0,0,0
+1,175,164,174,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,176,174,77,1,0,0,0,0,192,0,-1--1--1,,1|(1418,1045)|
+1,177,35,173,1,0,0,0,0,192,0,-1--1--1,,1|(1314,819)|
+1,178,74,173,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,179,173,40,1,0,0,0,0,192,0,-1--1--1,,1|(1783,946)|
+1,180,173,128,1,0,0,0,0,192,0,-1--1--1,,1|(1932,876)|
+1,181,183,1,100,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1280,273)|
+1,182,183,7,4,0,0,22,1,192,0,0-128-0,|||0-0-0,1|(1436,273)|
+11,183,0,1358,273,6,8,34,3,0,1,1,0,0,0,0-128-0,0-0-0,|||0-0-0,0,0,0,0,0,0
+10,184,Task Completion Rate,1358,303,42,22,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,185,35,183,1,0,0,0,0,192,0,-1--1--1,,1|(1266,441)|
+1,186,162,183,1,0,0,0,0,192,0,-1--1--1,,1|(1289,297)|
+1,187,22,183,1,0,0,0,0,192,0,-1--1--1,,1|(1395,321)|
+1,188,183,25,1,0,0,0,0,192,0,-1--1--1,,1|(1362,237)|
+1,189,183,128,1,0,0,0,0,192,0,-1--1--1,,1|(1728,255)|
+1,190,183,40,1,0,0,0,0,192,0,-1--1--1,,1|(1929,388)|
+\\\---/// Sketch information - do not modify anything except names
+V300  Do not put anything below this section - it will be ignored
+*Aux Variables
+$-1--1--1,0,|12||-1--1--1|-1--1--1|-1--1--1|-1--1--1|-1--1--1|96,96,100,0
+///---\\\
+:L<%^E!@
+1:cmd1.vdfx
+4:Time
+5:Completed Tasks
+9:cmd1
+19:72,0
+24:0
+25:5
+26:5
+57:1
+54:0
+55:0
+82:0
+86:0
+59:0
+56:0
+58:0
+71:0
+110:0
+111:0
+44:0
+46:0
+45:7
+49:0
+50:0
+51:
+52:
+53:
+43:C:\Users\enos9\OneDrive - Colostate\combined\cmd1.xlsx
+47:
+48:sddataout.lst
+23:0
+18:Sensitivity Analysis.vsc
+20:Sensitivity Analysis.lst
+15:0,0,0,0,0,0
+27:0,
+34:0,
+42:0
+72:0
+73:0
+95:0
+96:0
+97:1
+77:0
+78:0
+102:1
+93:0
+94:0
+92:0
+91:0
+90:0
+87:0
+75:
+43:C:\Users\enos9\OneDrive - Colostate\combined\cmd1.xlsx
+103:8,8,8,3,8
+105:0,0,0,0,0,0,0,0,0,0
+104:Courier|12||0-0-0|0-0-0|-1--1--1|0-0-255|192-192-192|-1--1--1
